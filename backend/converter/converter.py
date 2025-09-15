@@ -1,6 +1,5 @@
 import os
 import json
-import yaml
 from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom import minidom
 from datetime import datetime
@@ -19,26 +18,15 @@ def find_thumbnail(info_path, info):
             return os.path.basename(candidate)
     return get_value(info, "thumbnail", "")
 
-def json_to_nfo(info_path, yaml_template):
-    """
-    info_path : JSON 파일 경로
-    yaml_template : dict 또는 YAML 파일 경로
-    """
-    # yaml_template가 dict이면 그대로 사용, str이면 파일에서 로드
-    if isinstance(yaml_template, dict):
-        template = yaml_template
-    else:
-        with open(yaml_template, "r", encoding="utf-8") as f:
-            template = yaml.safe_load(f)
-
+def json_to_nfo(info_path, yaml_template, output_folder):
     with open(info_path, "r", encoding="utf-8") as f:
         info = json.load(f)
 
     root = Element("episodedetails")
 
-    # 기본 필드 처리
+    # 필드 처리
     for field in ["title", "showtitle", "season", "episode", "plot", "runtime", "id", "studio", "genre"]:
-        if field in template:
+        if field in yaml_template:
             text = get_value(info, field) if field != "plot" else get_value(info, "description", "")
             SubElement(root, field).text = str(text)
 
@@ -46,8 +34,8 @@ def json_to_nfo(info_path, yaml_template):
     thumb_tag = SubElement(root, "thumb")
     thumb_tag.text = find_thumbnail(info_path, info)
 
-    # ratings 처리
-    ratings_info = template.get("ratings", [])
+    # ratings
+    ratings_info = yaml_template.get("ratings", [])
     for r in ratings_info:
         rating = SubElement(root, "ratings")
         sub = SubElement(rating, "rating", {
@@ -58,7 +46,7 @@ def json_to_nfo(info_path, yaml_template):
         SubElement(sub, "value").text = str(info.get("average_rating", r.get("value", 0)))
         SubElement(sub, "votes").text = str(info.get("view_count", r.get("votes", 0)))
 
-    # uniqueid 처리
+    # uniqueid
     uid = SubElement(root, "uniqueid", {"type": "youtube", "default": "True"})
     SubElement(uid, "value").text = info.get("id", "")
 
@@ -71,11 +59,12 @@ def json_to_nfo(info_path, yaml_template):
     # UTF-8 인코딩 포함
     xml_bytes = minidom.parseString(tostring(root)).toprettyxml(indent="  ", encoding="utf-8")
 
-    # NFO 파일명 생성 (.info 제거)
-    base_name = os.path.splitext(info_path)[0]
+    # NFO 파일 생성 (output_folder)
+    os.makedirs(output_folder, exist_ok=True)
+    base_name = os.path.splitext(os.path.basename(info_path))[0]
     if base_name.endswith(".info"):
         base_name = base_name[:-5]
-    nfo_filename = base_name + ".nfo"
+    nfo_filename = os.path.join(output_folder, base_name + ".nfo")
 
     with open(nfo_filename, "wb") as f:
         f.write(xml_bytes)
