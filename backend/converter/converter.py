@@ -20,7 +20,11 @@ def find_thumbnail(info_path, info):
     return get_value(info, "thumbnail", "")
 
 def json_to_nfo(info_path, yaml_template):
-    # yaml_template가 dict이면 그대로, 아니면 파일에서 로드
+    """
+    info_path : JSON 파일 경로
+    yaml_template : dict 또는 YAML 파일 경로
+    """
+    # yaml_template가 dict이면 그대로 사용, str이면 파일에서 로드
     if isinstance(yaml_template, dict):
         template = yaml_template
     else:
@@ -32,7 +36,7 @@ def json_to_nfo(info_path, yaml_template):
 
     root = Element("episodedetails")
 
-    # 필드 처리
+    # 기본 필드 처리
     for field in ["title", "showtitle", "season", "episode", "plot", "runtime", "id", "studio", "genre"]:
         if field in template:
             text = get_value(info, field) if field != "plot" else get_value(info, "description", "")
@@ -42,7 +46,7 @@ def json_to_nfo(info_path, yaml_template):
     thumb_tag = SubElement(root, "thumb")
     thumb_tag.text = find_thumbnail(info_path, info)
 
-    # ratings
+    # ratings 처리
     ratings_info = template.get("ratings", [])
     for r in ratings_info:
         rating = SubElement(root, "ratings")
@@ -51,4 +55,29 @@ def json_to_nfo(info_path, yaml_template):
             "max": str(r.get("max", 5)),
             "default": str(r.get("default", True)).lower()
         })
-        SubElement(sub, "value").text = s
+        SubElement(sub, "value").text = str(info.get("average_rating", r.get("value", 0)))
+        SubElement(sub, "votes").text = str(info.get("view_count", r.get("votes", 0)))
+
+    # uniqueid 처리
+    uid = SubElement(root, "uniqueid", {"type": "youtube", "default": "True"})
+    SubElement(uid, "value").text = info.get("id", "")
+
+    # aired, dateadded
+    upload_date = info.get("upload_date")
+    if upload_date:
+        SubElement(root, "aired").text = datetime.strptime(upload_date, "%Y%m%d").strftime("%Y-%m-%d")
+    SubElement(root, "dateadded").text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # UTF-8 인코딩 포함
+    xml_bytes = minidom.parseString(tostring(root)).toprettyxml(indent="  ", encoding="utf-8")
+
+    # NFO 파일명 생성 (.info 제거)
+    base_name = os.path.splitext(info_path)[0]
+    if base_name.endswith(".info"):
+        base_name = base_name[:-5]
+    nfo_filename = base_name + ".nfo"
+
+    with open(nfo_filename, "wb") as f:
+        f.write(xml_bytes)
+
+    print(f"NFO 생성 완료: {nfo_filename}")
